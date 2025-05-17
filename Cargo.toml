@@ -1,12 +1,17 @@
 [package]
 name = "nalgebra-benchmark"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-nalgebra = "*"
+nalgebra = { version = "0.33.2" }
 rand = "*"
 prettytable-rs = "0.10.0"
 
+[dependencies.nalgebra-lapack]
+version = "*" # Replace the * by the latest version number.
+default-features = false
+features = [ "accelerate" ]
+
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.6.0"

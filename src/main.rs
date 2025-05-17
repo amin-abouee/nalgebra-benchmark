@@ -224,20 +224,33 @@ where
 }
 
 fn run_benchmarks() {
-    const SMALL_MATRIX_ITERATIONS: usize = 5;
-    const MEDIUM_MATRIX_ITERATIONS: usize = 3;
+    const SMALL_MATRIX_ITERATIONS: usize = 10;
+    const MEDIUM_MATRIX_ITERATIONS: usize = 5;
 
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
+    // Create two tables - one for timing and one for accuracy
+    let mut time_table = Table::new();
+    let mut accuracy_table = Table::new();
+    time_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+    accuracy_table.set_format(*format::consts::FORMAT_BOX_CHARS);
 
-    let mut header = row!["solver/size"];
+    // Create headers for both tables
+    let mut time_header = row!["solver/size"];
+    let mut accuracy_header = row!["solver/size"];
+    
     for size in SQUARE_SIZES.iter() {
-        header.add_cell(cell!(format!("{}x{}", size, size)));
+        let header_text = format!("{0}x{0}", size);
+        time_header.add_cell(cell!(header_text.clone()));
+        accuracy_header.add_cell(cell!(header_text));
     }
+    
     for col in RECT_COLS.iter() {
-        header.add_cell(cell!(format!("{}x{}", RECT_ROWS, col)));
+        let header_text = format!("{0}x{1}", RECT_ROWS, col);
+        time_header.add_cell(cell!(header_text.clone()));
+        accuracy_header.add_cell(cell!(header_text));
     }
-    table.add_row(header);
+    
+    time_table.add_row(time_header);
+    accuracy_table.add_row(accuracy_header);
 
     let benchmarks: [(&str, fn(&DMatrix<f64>) -> (Duration, f64), bool); 8] = [
         ("Cholesky", bench_cholesky, true),
@@ -251,26 +264,21 @@ fn run_benchmarks() {
     ];
 
     let mut reference_times = Vec::new();
+    let mut time_rows = Vec::new();
+    let mut accuracy_rows = Vec::new();
+
+    // Initialize rows for both tables
+    for (name, _, _) in benchmarks.iter() {
+        time_rows.push(row![name]);
+        accuracy_rows.push(row![name]);
+    }
 
     for (idx, (name, bench_fn, needs_spd)) in benchmarks.iter().enumerate() {
         println!("Benchmarking {} algorithm...", name);
-        let mut row = row![name];
 
         // Square matrices
         for (i, &size) in SQUARE_SIZES.iter().enumerate() {
             println!("  - Testing {}x{} matrix", size, size);
-
-            if (*name == "Schur" || *name == "HermitianEigen") && size > 1000 {
-                println!(
-                    "    - Skipping ({} for {}x{} is too slow/large)",
-                    name, size, size
-                );
-                row.add_cell(cell!("-"));
-                if idx == 0 {
-                    reference_times.push(f64::NAN);
-                } // Push NaN for ref time if skipped
-                continue;
-            }
 
             let (time_ms, error) = if *needs_spd {
                 let matrix = random_spd_matrix(size);
@@ -296,9 +304,9 @@ fn run_benchmarks() {
                 (duration.as_secs_f64() * 1000.0, err_val)
             };
 
+            // Add to console output (keep the same format as before)
             if idx == 0 {
                 reference_times.push(time_ms);
-                row.add_cell(cell!(format!("{:.4} - acc: {:.2e}", time_ms, error)));
                 println!("    - Time: {:.4} ms - Accuracy: {:.2e}", time_ms, error);
             } else {
                 let ratio = if reference_times[i].is_nan() {
@@ -307,22 +315,36 @@ fn run_benchmarks() {
                     time_ms / reference_times[i]
                 };
                 if reference_times[i].is_nan() || time_ms.is_nan() {
-                    row.add_cell(cell!(format!("{:.4} (xNaN) - acc: {:.2e}", time_ms, error)));
                     println!(
                         "    - Time: {:.4} ms (xNaN) - Accuracy: {:.2e}",
                         time_ms, error
                     );
                 } else {
-                    row.add_cell(cell!(format!(
-                        "{:.4} (x{:.2}) - acc: {:.2e}",
-                        time_ms, ratio, error
-                    )));
                     println!(
                         "    - Time: {:.4} ms (x{:.2}) - Accuracy: {:.2e}",
                         time_ms, ratio, error
                     );
                 }
             }
+
+            // Add to time table
+            if idx == 0 {
+                time_rows[idx].add_cell(cell!(format!("{:.4}", time_ms)));
+            } else {
+                let ratio = if reference_times[i].is_nan() {
+                    f64::NAN
+                } else {
+                    time_ms / reference_times[i]
+                };
+                if reference_times[i].is_nan() || time_ms.is_nan() {
+                    time_rows[idx].add_cell(cell!(format!("{:.4} (xNaN)", time_ms)));
+                } else {
+                    time_rows[idx].add_cell(cell!(format!("{:.4} (x{:.2})", time_ms, ratio)));
+                }
+            }
+
+            // Add to accuracy table (no ratios)
+            accuracy_rows[idx].add_cell(cell!(format!("{:.2e}", error)));
         }
 
         // Rectangular matrices
@@ -334,7 +356,8 @@ fn run_benchmarks() {
                 && RECT_ROWS != cols
             {
                 println!("    - Skipping ({} requires square matrix)", name);
-                row.add_cell(cell!("-"));
+                time_rows[idx].add_cell(cell!("-"));
+                accuracy_rows[idx].add_cell(cell!("-"));
                 if idx == 0 {
                     reference_times.push(f64::NAN);
                 }
@@ -376,28 +399,13 @@ fn run_benchmarks() {
                 ""
             };
 
+            // Add to console output (keep the same format as before)
             if idx == 0 {
                 reference_times.push(time_ms);
-                if cols == 8 {
-                    let time_ns = time_ms * 1_000_000.0;
-                    row.add_cell(cell!(format!(
-                        "{:.2} ns{} - acc: {:.2e}",
-                        time_ns, asterisk, error
-                    )));
-                    println!(
-                        "    - Time: {:.2} ns{} - Accuracy: {:.2e}",
-                        time_ns, asterisk, error
-                    );
-                } else {
-                    row.add_cell(cell!(format!(
-                        "{:.3}{} - acc: {:.2e}",
-                        time_ms, asterisk, error
-                    )));
-                    println!(
-                        "    - Time: {:.3} ms{} - Accuracy: {:.2e}",
-                        time_ms, asterisk, error
-                    );
-                }
+                println!(
+                    "    - Time: {:.3} ms{} - Accuracy: {:.2e}",
+                    time_ms, asterisk, error
+                );
             } else {
                 let ratio = if reference_times[current_rect_ref_idx].is_nan() {
                     f64::NAN
@@ -409,33 +417,46 @@ fn run_benchmarks() {
                 } else {
                     format!("x{:.2}", ratio)
                 };
-
-                if cols == 8 {
-                    let time_ns = time_ms * 1_000_000.0;
-                    row.add_cell(cell!(format!(
-                        "{:.2} ns ({}){} - acc: {:.2e}",
-                        time_ns, ratio_str, asterisk, error
-                    )));
-                    println!(
-                        "    - Time: {:.2} ns ({}){} - Accuracy: {:.2e}",
-                        time_ns, ratio_str, asterisk, error
-                    );
-                } else {
-                    row.add_cell(cell!(format!(
-                        "{:.3} ({}){} - acc: {:.2e}",
-                        time_ms, ratio_str, asterisk, error
-                    )));
-                    println!(
-                        "    - Time: {:.3} ms ({}){} - Accuracy: {:.2e}",
-                        time_ms, ratio_str, asterisk, error
-                    );
-                }
+                println!(
+                    "    - Time: {:.3} ms ({}){} - Accuracy: {:.2e}",
+                    time_ms, ratio_str, asterisk, error
+                );
             }
+
+            // Add to time table
+            if idx == 0 {
+                time_rows[idx].add_cell(cell!(format!("{:.3}{}", time_ms, asterisk)));
+            } else {
+                let ratio = if reference_times[current_rect_ref_idx].is_nan() {
+                    f64::NAN
+                } else {
+                    time_ms / reference_times[current_rect_ref_idx]
+                };
+                let ratio_str = if ratio.is_nan() {
+                    "xNaN".to_string()
+                } else {
+                    format!("x{:.2}", ratio)
+                };
+                time_rows[idx].add_cell(cell!(format!("{:.3} ({}){}", time_ms, ratio_str, asterisk)));
+            }
+
+            // Add to accuracy table (no ratios)
+            accuracy_rows[idx].add_cell(cell!(format!("{:.2e}{}", error, asterisk)));
         }
-        table.add_row(row);
     }
-    println!("Results Table:");
-    table.printstd();
+
+    // Add all rows to tables
+    for i in 0..benchmarks.len() {
+        time_table.add_row(time_rows[i].clone());
+        accuracy_table.add_row(accuracy_rows[i].clone());
+    }
+
+    // Print both tables
+    println!("\nTiming Results Table:");
+    time_table.printstd();
+    
+    println!("\nAccuracy Results Table:");
+    accuracy_table.printstd();
 }
 
 fn main() {

@@ -1,5 +1,5 @@
 use nalgebra::DMatrix;
-use prettytable::{cell, format, row, Table};
+use prettytable::{Table, cell, format, row};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::f64;
@@ -65,7 +65,6 @@ fn matrix_error(original: &DMatrix<f64>, reconstructed: &DMatrix<f64>) -> f64 {
 
 // Benchmark functions for each decomposition algorithm
 // Each function returns both the duration and the reconstruction error
-
 fn bench_cholesky(matrix: &DMatrix<f64>) -> (Duration, f64) {
     let start = Instant::now();
     if matrix.nrows() != matrix.ncols() {
@@ -159,7 +158,6 @@ fn bench_schur(matrix: &DMatrix<f64>) -> (Duration, f64) {
     let start = Instant::now();
     let schur_decomp = matrix.clone().schur();
     let duration = start.elapsed();
-    // let reconstructed = schur_decomp.recompose();
     let (q, t) = schur_decomp.unpack();
     let reconstructed = q.clone() * t.clone() * q.clone().transpose();
     let error = matrix_error(matrix, &reconstructed);
@@ -170,11 +168,6 @@ fn bench_hermitian_eigen(matrix: &DMatrix<f64>) -> (Duration, f64) {
     let start = Instant::now();
     let eigen = matrix.clone().symmetric_eigen();
     let duration = start.elapsed();
-
-    // let q = eigen.eigenvectors;
-    // let d_values = eigen.eigenvalues;
-    // let d_matrix = DMatrix::from_diagonal(&d_values);
-    // let reconstructed = &q * d_matrix * q.transpose();
     let reconstructed = eigen.recompose();
     let error = matrix_error(matrix, &reconstructed);
     (duration, error)
@@ -192,7 +185,6 @@ fn bench_svd(matrix: &DMatrix<f64>) -> (Duration, f64) {
         let s_diag = DMatrix::from_diagonal(&svd_decomp.singular_values);
 
         // U is (m,k), s_diag is (k,k), v_t is (k,n)
-        // reconstructed = U * S_diag * V_t
         let reconstructed = u * s_diag * v_t;
         matrix_error(matrix, &reconstructed)
     } else {
@@ -236,19 +228,19 @@ fn run_benchmarks() {
     // Create headers for both tables
     let mut time_header = row!["solver/size"];
     let mut accuracy_header = row!["solver/size"];
-    
+
     for size in SQUARE_SIZES.iter() {
         let header_text = format!("{0}x{0}", size);
         time_header.add_cell(cell!(header_text.clone()));
         accuracy_header.add_cell(cell!(header_text));
     }
-    
+
     for col in RECT_COLS.iter() {
         let header_text = format!("{0}x{1}", RECT_ROWS, col);
         time_header.add_cell(cell!(header_text.clone()));
         accuracy_header.add_cell(cell!(header_text));
     }
-    
+
     time_table.add_row(time_header);
     accuracy_table.add_row(accuracy_header);
 
@@ -287,7 +279,7 @@ fn run_benchmarks() {
                 } else if size <= 1000 {
                     MEDIUM_MATRIX_ITERATIONS
                 } else {
-                    1
+                    2
                 };
                 let (duration, err_val) = bench_with_iterations(&matrix, *bench_fn, iterations);
                 (duration.as_secs_f64() * 1000.0, err_val)
@@ -377,7 +369,6 @@ fn run_benchmarks() {
                 };
                 let (duration, err_val) = bench_with_iterations(&matrix, *bench_fn, iterations);
                 (duration.as_secs_f64() * 1000.0, err_val)
-
             } else {
                 // Cholesky, LU, FullPivLU, QR, SVD can run on rectangular
                 // Cholesky, LU, FullPivLU will internally handle A'A for rectangular
@@ -437,7 +428,8 @@ fn run_benchmarks() {
                 } else {
                     format!("x{:.2}", ratio)
                 };
-                time_rows[idx].add_cell(cell!(format!("{:.3} ({}){}", time_ms, ratio_str, asterisk)));
+                time_rows[idx]
+                    .add_cell(cell!(format!("{:.3} ({}){}", time_ms, ratio_str, asterisk)));
             }
 
             // Add to accuracy table (no ratios)
@@ -454,7 +446,7 @@ fn run_benchmarks() {
     // Print both tables
     println!("\nTiming Results Table:");
     time_table.printstd();
-    
+
     println!("\nAccuracy Results Table:");
     accuracy_table.printstd();
 }
